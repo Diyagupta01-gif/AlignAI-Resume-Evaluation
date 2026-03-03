@@ -9,23 +9,26 @@ from dotenv import load_dotenv
 import google.generativeai as genai
 
 # ---------------- PAGE CONFIG ----------------
-st.set_page_config(
-    page_title="AlignAI - Resume Evaluation System",
-    layout="wide"
-)
+st.set_page_config(page_title="AlignAI", layout="wide")
 
-# ---------------- HEADER ----------------
 st.title("AlignAI - Resume Requirement Evaluation Framework")
-st.caption("AI-Powered Skill Gap & KPI-Based Candidate Assessment System")
+st.caption("AI-Powered Skill Gap & KPI-Based Candidate Assessment")
 
 st.divider()
 
 # ---------------- LOAD API ----------------
 load_dotenv()
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-model = genai.GenerativeModel("gemini-2.5-flash")
 
-# ---------------- FILE INPUT ----------------
+model = genai.GenerativeModel(
+    "gemini-2.5-flash-lite",
+    generation_config={
+        "temperature": 0.2,
+        "max_output_tokens": 600
+    }
+)
+
+# ---------------- INPUT ----------------
 col1, col2 = st.columns(2)
 
 with col1:
@@ -35,6 +38,7 @@ with col2:
     job_description = st.text_area("Paste Job Description")
 
 # ---------------- PDF EXTRACTION ----------------
+@st.cache_data
 def extract_text_from_pdf(uploaded_file):
     text = ""
     pdf_bytes = uploaded_file.read()
@@ -48,19 +52,19 @@ def extract_text_from_pdf(uploaded_file):
 
     return text
 
-# ---------------- ANALYZE ----------------
+# ---------------- ANALYSIS ----------------
 if st.button("Run Evaluation"):
 
     if uploaded_file and job_description.strip():
 
-        with st.spinner("Analyzing resume... Please wait."):
+        with st.spinner("Analyzing resume..."):
 
             uploaded_file.seek(0)
             resume_text = extract_text_from_pdf(uploaded_file)
 
-            # 🔥 SPEED OPTIMIZATION (LIMIT SIZE)
-            resume_text = resume_text[:2500]
-            job_description_trimmed = job_description[:2000]
+            # 🔥 Aggressive trimming
+            resume_text = resume_text[:1800]
+            job_description_trimmed = job_description[:1500]
 
             prompt = f"""
 Return ONLY valid JSON:
@@ -73,6 +77,8 @@ Return ONLY valid JSON:
   "weaknesses": [],
   "suggestions": []
 }}
+
+Keep lists short (max 5 items each).
 
 Resume:
 {resume_text}
@@ -91,7 +97,7 @@ Job Description:
 
             data = json.loads(result)
 
-        # ---------------- DATA PROCESSING ----------------
+        # ---------------- PROCESS ----------------
         score = int(data.get("score", 0))
         matched = data.get("matched_keywords", [])
         missing = data.get("missing_keywords", [])
@@ -112,7 +118,6 @@ Job Description:
         st.subheader("Evaluation Summary")
 
         colA, colB, colC, colD = st.columns(4)
-
         colA.metric("Overall Score", f"{score}/100")
         colB.metric("Coverage %", f"{coverage}%")
         colC.metric("Total Skills", total_skills)
@@ -121,8 +126,6 @@ Job Description:
         st.divider()
 
         # ---------------- CHART ----------------
-        st.subheader("Skill Gap Visualization")
-
         df = pd.DataFrame({
             "Category": ["Matched", "Missing"],
             "Count": [matched_count, missing_count]
@@ -137,7 +140,6 @@ Job Description:
 
         st.divider()
 
-        # ---------------- DETAILS ----------------
         col1, col2 = st.columns(2)
 
         with col1:
@@ -155,28 +157,6 @@ Job Description:
         st.markdown("### Improvement Suggestions")
         for s in data.get("suggestions", []):
             st.write(f"- {s}")
-
-        # ---------------- DOWNLOAD ----------------
-        report = f"""
-ALIGNAI - ATS EVALUATION REPORT
---------------------------------
-Overall Score: {score}/100
-Coverage: {coverage}%
-Risk Level: {risk_text}
-
-Matched Skills:
-{chr(10).join(matched)}
-
-Missing Skills:
-{chr(10).join(missing)}
-"""
-
-        st.download_button(
-            label="Download Business Report",
-            data=report,
-            file_name="AlignAI_Report.txt",
-            mime="text/plain"
-        )
 
     else:
         st.warning("Please upload resume and paste job description.")
