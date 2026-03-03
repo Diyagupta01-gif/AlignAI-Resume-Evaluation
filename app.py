@@ -14,35 +14,9 @@ st.set_page_config(
     layout="wide"
 )
 
-# ---------------- CUSTOM STYLING ----------------
-st.markdown("""
-    <style>
-        .main {
-            background-color: #f4f6f9;
-        }
-        .kpi-card {
-            background-color: white;
-            padding: 15px;
-            border-radius: 10px;
-            text-align: center;
-            box-shadow: 0px 2px 8px rgba(0,0,0,0.05);
-        }
-        .risk-low {color: green; font-weight: bold;}
-        .risk-moderate {color: orange; font-weight: bold;}
-        .risk-high {color: red; font-weight: bold;}
-        footer {visibility: hidden;}
-    </style>
-""", unsafe_allow_html=True)
-
 # ---------------- HEADER ----------------
-col_logo, col_title = st.columns([1, 6])
-
-with col_logo:
-    st.image("https://cdn-icons-png.flaticon.com/512/3135/3135715.png", width=80)
-
-with col_title:
-    st.markdown("## AlignAI - Resume Requirement Evaluation Framework")
-    st.caption("AI-Powered Skill Gap & KPI-Based Candidate Assessment System")
+st.title("AlignAI - Resume Requirement Evaluation Framework")
+st.caption("AI-Powered Skill Gap & KPI-Based Candidate Assessment System")
 
 st.divider()
 
@@ -51,7 +25,7 @@ load_dotenv()
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 model = genai.GenerativeModel("gemini-2.5-flash")
 
-# ---------------- FILE UPLOAD ----------------
+# ---------------- FILE INPUT ----------------
 col1, col2 = st.columns(2)
 
 with col1:
@@ -71,6 +45,7 @@ def extract_text_from_pdf(uploaded_file):
             extracted = page.extract_text()
             if extracted:
                 text += extracted
+
     return text
 
 # ---------------- ANALYZE ----------------
@@ -78,11 +53,18 @@ if st.button("Run Evaluation"):
 
     if uploaded_file and job_description.strip():
 
-        uploaded_file.seek(0)
-        resume_text = extract_text_from_pdf(uploaded_file)
+        with st.spinner("Analyzing resume... Please wait."):
 
-        prompt = f"""
+            uploaded_file.seek(0)
+            resume_text = extract_text_from_pdf(uploaded_file)
+
+            # 🔥 SPEED OPTIMIZATION (LIMIT SIZE)
+            resume_text = resume_text[:2500]
+            job_description_trimmed = job_description[:2000]
+
+            prompt = f"""
 Return ONLY valid JSON:
+
 {{
   "score": number,
   "matched_keywords": [],
@@ -96,19 +78,20 @@ Resume:
 {resume_text}
 
 Job Description:
-{job_description}
+{job_description_trimmed}
 """
 
-        response = model.generate_content(prompt)
-        result = response.text.strip()
+            response = model.generate_content(prompt)
+            result = response.text.strip()
 
-        if result.startswith("```"):
-            result = result.split("```")[1]
-        if result.lower().startswith("json"):
-            result = result[4:].strip()
+            if result.startswith("```"):
+                result = result.split("```")[1]
+            if result.lower().startswith("json"):
+                result = result[4:].strip()
 
-        data = json.loads(result)
+            data = json.loads(result)
 
+        # ---------------- DATA PROCESSING ----------------
         score = int(data.get("score", 0))
         matched = data.get("matched_keywords", [])
         missing = data.get("missing_keywords", [])
@@ -120,26 +103,24 @@ Job Description:
 
         if coverage >= 75:
             risk_text = "Low Risk – Strong Alignment"
-            risk_class = "risk-low"
         elif coverage >= 50:
             risk_text = "Moderate Risk – Partial Alignment"
-            risk_class = "risk-moderate"
         else:
             risk_text = "High Risk – Significant Gaps"
-            risk_class = "risk-high"
+
+        # ---------------- DASHBOARD ----------------
+        st.subheader("Evaluation Summary")
+
+        colA, colB, colC, colD = st.columns(4)
+
+        colA.metric("Overall Score", f"{score}/100")
+        colB.metric("Coverage %", f"{coverage}%")
+        colC.metric("Total Skills", total_skills)
+        colD.metric("Risk Level", risk_text)
 
         st.divider()
-        st.subheader("KPI Dashboard")
 
-        k1, k2, k3, k4 = st.columns(4)
-
-        k1.metric("Overall Score", f"{score}/100")
-        k2.metric("Coverage %", f"{coverage}%")
-        k3.metric("Total Skills", total_skills)
-        k4.markdown(f"<p class='{risk_class}'>Risk: {risk_text}</p>", unsafe_allow_html=True)
-
-        st.divider()
-
+        # ---------------- CHART ----------------
         st.subheader("Skill Gap Visualization")
 
         df = pd.DataFrame({
@@ -156,14 +137,15 @@ Job Description:
 
         st.divider()
 
-        colA, colB = st.columns(2)
+        # ---------------- DETAILS ----------------
+        col1, col2 = st.columns(2)
 
-        with colA:
+        with col1:
             st.markdown("### Matched Skills")
             for skill in matched:
                 st.write(f"- {skill}")
 
-        with colB:
+        with col2:
             st.markdown("### Missing Skills")
             for skill in missing:
                 st.write(f"- {skill}")
@@ -174,6 +156,7 @@ Job Description:
         for s in data.get("suggestions", []):
             st.write(f"- {s}")
 
+        # ---------------- DOWNLOAD ----------------
         report = f"""
 ALIGNAI - ATS EVALUATION REPORT
 --------------------------------
@@ -197,6 +180,3 @@ Missing Skills:
 
     else:
         st.warning("Please upload resume and paste job description.")
-
-st.divider()
-st.caption("© 2026 AlignAI | Business Requirement Evaluation System")
